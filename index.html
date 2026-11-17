@@ -1329,10 +1329,10 @@ Raccomandiamo ${f?"la sorella":"il fratello"} alla vostra cura cristiana, certi 
 
 Restiamo a disposizione per eventuali ulteriori comunicazioni e vi porgiamo fraterni saluti cristiani.`},
   ro:{ oggetto:"Scrisoare de transfer de membru",
-    dest:n=>`Către Comitetul ${n}`,
-    chiusa:c=>`În Domnul,\npentru Comitetul ${c}`,
+    dest:n=>`Către Comitetul ${n}`, destL:p=>`Către Comitetul Bisericii din ${p}`,
+    chiusa:c=>`În Domnul,\npentru Comitetul ${c.replace(/^Biserica\b/,"Bisericii")}`,
     testo:(f,nome,chiesa)=>
-`Prin prezenta se certifică că ${f?"sora":"fratele"} ${nome}, în prezent ${f?"membră":"membru"} ${chiesa}, a solicitat transferul la biserica dumneavoastră.
+`Prin prezenta se certifică că ${f?"sora":"fratele"} ${nome}, în prezent ${f?"membră a":"membru al"} ${chiesa.replace(/^Biserica\b/,"Bisericii")}, a solicitat transferul la biserica dumneavoastră.
 
 După o atentă evaluare din partea Comitetului și în lipsa oricăror impedimente disciplinare sau doctrinare, cererea a fost aprobată. Prin urmare, începând de astăzi, ${f?"sus-numita membră este eliberată":"sus-numitul membru este eliberat"} în bună și regulată situație, pentru a fi ${f?"primită":"primit"} ca ${f?"membră":"membru"} în comunitatea dumneavoastră.
 
@@ -1340,7 +1340,7 @@ ${f?"O recomandăm pe soră":"Îl recomandăm pe frate"} grijii dumneavoastră c
 
 Rămânem la dispoziție pentru orice altă comunicare și vă transmitem salutări frățești creștine.`},
   es:{ oggetto:"Carta de traslado de miembro",
-    dest:n=>`Al Comité de la ${n}`,
+    dest:n=>`Al Comité de la ${n}`, destL:p=>`Al Comité de la Iglesia de ${p}`,
     chiusa:c=>`En el Señor,\npor el Comité de la ${c}`,
     testo:(f,nome,chiesa)=>
 `Por la presente se certifica que ${f?"la hermana":"el hermano"} ${nome}, actualmente miembro de la ${chiesa}, ha solicitado su traslado a vuestra iglesia.
@@ -1351,7 +1351,7 @@ Recomendamos ${f?"a la hermana":"al hermano"} a vuestro cuidado cristiano, segur
 
 Quedamos a disposición para cualquier otra comunicación y os enviamos saludos fraternales cristianos.`},
   pt:{ oggetto:"Carta de transferência de membro",
-    dest:n=>`Ao Comité da ${n}`,
+    dest:n=>`Ao Comité da ${n}`, destL:p=>`Ao Comité da Igreja de ${p}`,
     chiusa:c=>`No Senhor,\npelo Comité da ${c}`,
     testo:(f,nome,chiesa)=>
 `Pela presente certifica-se que ${f?"a irmã":"o irmão"} ${nome}, atualmente membro da ${chiesa}, solicitou a transferência para a vossa igreja.
@@ -1362,7 +1362,7 @@ Recomendamos ${f?"a irmã":"o irmão"} aos vossos cuidados cristãos, certos de 
 
 Permanecemos à disposição para quaisquer outras comunicações e enviamos saudações fraternais cristãs.`},
   en:{ oggetto:"Letter of transfer of membership",
-    dest:n=>`To the Committee of the ${n}`,
+    dest:n=>`To the Committee of the ${n}`, destL:p=>`To the Committee of the ${p} Church`,
     chiusa:c=>`In the Lord,\nfor the Committee of the ${c}`,
     testo:(f,nome,chiesa)=>
 `This is to certify that ${f?"Sister":"Brother"} ${nome}, currently a member of the ${chiesa}, has requested a transfer to your church.
@@ -1373,7 +1373,7 @@ We commend our ${f?"sister":"brother"} to your Christian care, confident that ${
 
 We remain available for any further communication, and send you fraternal Christian greetings.`},
   fr:{ oggetto:"Lettre de transfert de membre",
-    dest:n=>`Au Comité de l'${n}`,
+    dest:n=>`Au Comité de l'${n}`, destL:p=>`Au Comité de l'Église de ${p}`,
     chiusa:c=>`Dans le Seigneur,\npour le Comité de l'${c}`,
     testo:(f,nome,chiesa)=>
 `Par la présente, il est certifié que ${f?"la sœur":"le frère"} ${nome}, actuellement membre de l'${chiesa}, a demandé son transfert à votre église.
@@ -1392,6 +1392,9 @@ function chiusaLettera(lingua, chiesa){
   const T = TRASF[lingua] || TRASF.it;
   return T.chiusa(chiesa || (typeof DB!=="undefined"&&DB ? DB.impostazioni.chiesa : "Chiesa del Casentino"));
 }
+/* «Chiesa di Arad» -> «Arad»; un nome scritto già in un'altra lingua resta com'è */
+const luogoChiesa = n => (String(n||"").match(/^Chiesa\s+(?:di|del|della|dello|dei|degli|d')\s*(.+)$/i)||[])[1];
+const destTrasferimento = (lg, nome) => { const T = TRASF[lg]||TRASF.it, p = luogoChiesa(nome); return p && T.destL ? T.destL(p) : T.dest(nome); };
 function oggettoTrasferimento(lingua){ return (TRASF[lingua]||TRASF.it).oggetto; }
 const CHIESA_IN_LINGUA = {it:"Chiesa del Casentino", ro:"Biserica din Casentino", es:"Iglesia del Casentino",
   pt:"Igreja do Casentino", en:"Casentino Church", fr:"Église du Casentino", de:"Gemeinde Casentino"};
@@ -3167,7 +3170,7 @@ function generaLettereTrasferimento(m, chiesa, data){
   lingue.forEach(lg=>{
     const T = TRASF[lg]||TRASF.it;
     const l={id:uid(), numero:prossimoNumeroLettera(anno), anno, data, tipo:"Trasferimento", lingua:lg,
-      destinatario:`${T.dest(chiesa.nome)}${chiesa.paese?"\n"+chiesa.paese:""}`,
+      destinatario:`${destTrasferimento(lg, chiesa.nome)}${chiesa.paese?"\n"+chiesa.paese:""}`,
       oggetto:T.oggetto,
       corpo:T.testo(m.sesso==="F", nomeMembro(m), CHIESA_IN_LINGUA[lg]||DB.impostazioni.chiesa),
       chiusa:T.chiusa(CHIESA_IN_LINGUA[lg]||DB.impostazioni.chiesa),
@@ -6949,10 +6952,9 @@ function fogliaLettera(l){
   const car=f?(caricheDi(f.id)||["Segretario"])[0]:"Segretario";
   const E=eti(l.lingua);
   const cariScritta = E.ruoli[car] || E.def(car);
-  const testaChiesa = l.lingua&&l.lingua!=="it" ? (CHIESA_IN_LINGUA[l.lingua]||I.chiesa) : I.chiesa;
   return `<div class="lettera">
     <div class="testa"><img src="${I.logo}" alt="">
-      <b>${esc(testaChiesa.toUpperCase())}</b>
+      <b>${esc(I.chiesa.toUpperCase())}</b>
       <span>${esc(I.sottotitolo)}</span><span>${esc(I.indirizzo)}</span></div>
     <p class="data">${esc(I.citta||"Capolona")}, ${esc(E.li)}${esc(dataInLingua(l.data,l.lingua))}</p>
     <div class="dest"><span class="l">${esc(l.tipo==="Circolare"?E.dest:E.att)}</span>
@@ -7865,7 +7867,7 @@ VISTE.manuale=()=>{
 let impSez="documenti";
 /* si vede in Impostazioni: serve a capire al volo se sull'iPad e' arrivata la versione
    nuova o e' rimasta quella di prima in memoria. */
-const VERSIONE_APP="26.30";
+const VERSIONE_APP="26.31";
 const AGGIORNATA_IL="17 novembre 2026";
 const CREDITI="Realizzato da: Edoardo Birla";
 /* offline: il service worker tiene in cache l'app e i caratteri, cosi' sull'iPad
