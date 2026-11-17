@@ -1157,7 +1157,7 @@ const VUOTI_VERBALE={straordinario:false, numero:null, iniziato:false, oraApertu
   incarichiApplicati:false, decorrenza:null, correzione:false, allegati:[], esclusi:[], prove:[]};
 const VUOTI_MEMBRO={cognome:"", nome:"", conosciuto:"", sesso:"M", nato:"", cittadinanza:"", telefono:"", email:"",
   cittaNascita:"", professione:"", titoloStudio:"", statoCivile:"", indirizzo:"", cap:"", citta:"",
-  provincia:"", padreId:"", madreId:"", coniugeId:"", foto:null, firma:null, pastore:false,
+  provincia:"", padreId:"", madreId:"", coniugeId:"", foto:null, firma:null, pastore:false, incaricoCampo:"",
   note:"", storico:[]};
 const VUOTI_EVENTO={tipo:"battesimo", data:"", officiante:"", luogo:"", chiesa:"", note:"",
   letteraId:null, allegati:[]};
@@ -2773,6 +2773,7 @@ function schedaMembro(m){
     <div class="fr">${campo("Indirizzo","indirizzo",m.indirizzo)}${campo("CAP","cap",m.cap)}
       ${campo("Città","citta",m.citta)}${campo("Provincia","provincia",m.provincia)}</div>
     <div class="fr">${campo("Professione","professione",m.professione)}${campo("Titolo di studio","titoloStudio",m.titoloStudio)}</div>
+    <div class="fr">${campo("Incarico al Campo","incaricoCampo",m.incaricoCampo||"","text",'placeholder="se ne ha uno, per esempio: Dipartimento giovani. Chi ha un incarico al Campo è delegato ex ufficio"')}</div>
     <div class="fr">${campo("Cellulare","telefono",m.telefono)}${campo("Email","email",m.email,"email")}</div>
     <div class="fr">${scelta("Stato civile","statoCivile",m.statoCivile,["","Celibe/Nubile","Sposato/a","Vedovo/a","Altro"])}
       <div class="fl"><span class="lb">Fascia per il Campo</span><div class="au">${esc(fascia(m))}<span class="au-t">auto</span></div></div></div>
@@ -3272,6 +3273,7 @@ function fogliaScheda(m){
       ${r("Residenza", [m.indirizzo,[m.cap,m.citta].filter(Boolean).join(" "),m.provincia?"("+m.provincia+")":""].filter(Boolean).map(esc).join(", "))}
       ${r("Professione", esc(m.professione))}
       ${r("Titolo di studio", esc(m.titoloStudio))}
+      ${r("Incarico al Campo", esc(m.incaricoCampo))}
       ${r("Stato civile", esc(m.statoCivile))}
       ${r("Cellulare", esc(m.telefono))}
       ${r("Email", esc(m.email))}
@@ -3846,6 +3848,7 @@ function editorVerbale(v){
           </div></div>
 
         <div class="pn gro pres"><div class="pn-h"><span class="lb">Presenti</span>
+          ${inTolleranza(v)?`<span class="cp" title="Chi segni adesso conta come presente dall'apertura">senza ritardo fino alle ${fineTolleranza(v)}</span>`:""}
           ${v.iniziato && v.presentiApertura!=null && v.presentiApertura!==v.presenti.length
             ? `<span class="cp">in apertura ${v.presentiApertura}</span><span class="cp v">adesso ${v.presenti.length}${isCom?` di ${elencoPresenza.length}`:""}</span>`
             : `<span class="cp v">${v.presenti.length}${isCom?` di ${elencoPresenza.length}`:""}</span>`}
@@ -3928,7 +3931,7 @@ function editorVerbale(v){
   $("[data-indietro]").onclick=()=>vai(T.vista);
   $("[data-conv]")?.addEventListener("click",()=>convocazione(v));
   $("[data-inizia]")?.addEventListener("click",()=>{
-    v.stato="aperto"; v.iniziato=true; v.oraApertura=oraOra();
+    v.stato="aperto"; v.iniziato=true; v.oraApertura=oraOra(); v.inizioMs=Date.now();
     v.cronologia.push({ora:v.oraApertura,testo:"Apertura"});
     v.presentiApertura=v.presenti.length; v.presentiUscita=v.presenti.length;
     salva(); disegna(); });
@@ -3987,8 +3990,12 @@ function editorVerbale(v){
 }
 /* i due numeri vengono sempre dalla lista dei presenti:
    l'apertura si congela quando la riunione comincia, l'uscita segue la lista. */
+/* nei primi minuti dopo «Inizia» i presenti si segnano ancora come all'apertura: nessuna entrata in ritardo */
+const MINUTI_PRESENZE = 5;
+const inTolleranza = v => !!v.inizioMs && Date.now()-v.inizioMs < MINUTI_PRESENZE*60000;
+const fineTolleranza = v => { const d=new Date(v.inizioMs+MINUTI_PRESENZE*60000); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
 function allineaConteggi(v){
-  if(!v.iniziato) v.presentiApertura = v.presenti.length;
+  if(!v.iniziato || inTolleranza(v)) v.presentiApertura = v.presenti.length;
   v.presentiUscita = v.presenti.length;
 }
 function autoAlto(t){ t.style.height="auto"; t.style.height=(t.scrollHeight+2)+"px"; }
@@ -3996,6 +4003,7 @@ function autoAlto(t){ t.style.height="auto"; t.style.height=(t.scrollHeight+2)+"
    Vale in comitato, in assemblea e alla riorganizzazione. */
 let presCerca="", presCercaV=null;
 function segnaMovimento(v, id, entra){
+  if(inTolleranza(v)) return;   // primi minuti: vale come segnato prima dell'apertura
   v.cronologia.push({ora:oraOra(), membroId:id, verso:entra?"entra":"esce",
     testo:`${entra?"Entra":"Esce"} ${nomeMembro(id)} — presenti ${v.presenti.length}`});
   v.cronologia.sort((a,b)=>a.ora.localeCompare(b.ora));
@@ -4765,7 +4773,7 @@ function frasePro(v, x, esito){
   const banale=/^(favorevoli|favorevole|s[ìi]|a favore|approvato|approvata|contrari|contrario|no)$/i;
   if(esito==="approvata" && vinc && !banale.test(vinc.testo)) idea += `: ${vinc.testo}`;
   const infinito=/^\s*\S+(are|ere|ire|arsi|ersi|irsi)\b/i.test(idea);
-  const chi=soggettoVerbale(v);
+  const pa=padreDi(v,x), chi=pa ? `Durante ${pa.nome}, ${minuscolaIniziale(soggettoVerbale(v))}` : soggettoVerbale(v);
   const prop = infinito ? "di "+minuscolaIniziale(idea) : `«${idea}»`;
   if(esito==="approvata")  return `${chi} delibera ${infinito?prop:`quanto segue: «${idea}»`}.`;
   if(esito==="non approvata") return `${chi} non approva la proposta ${prop}.`;
@@ -4798,13 +4806,14 @@ function collegaElezioni(v){
     const libere=CARICHE_VOTABILI.filter(c=>!gia.has(c));
     if(!libere.length){ avvisa("Sono tutte assegnate","In questo verbale hai già messo in votazione tutte le cariche."); return; }
     const {el:mc} = modale({titolo:"Quale carica si vota?",corpo:
-      `<div class="fr">${scelta("Carica","__c",libere[0],libere)}${campo("Quanti eletti","__n",1,"number")}</div>
+      `<div class="fr">${scelta("Carica","__c",libere[0],libere)}${campo("Quanti posti in tutto","__n",1,"number")}</div>
        ${scelta("Come si vota","__m",modoProposto("segreto"),MODI)}${sceltaCandidati()}
+       <div class="avv n">Se i posti sono più di uno si eleggono uno alla volta. Per il comitato e i delegati al Campo il numero comprende gli ex ufficio: con un comitato di 7 e 3 ex ufficio se ne eleggono 4.</div>
        <div class="avv n">Le cariche già votate in questo verbale non compaiono più. Per affiancare un'altra persona a un incarico già assegnato, usa un comitato o un'assemblea successiva.</div>`,
       azioni:[{testo:"Annulla",fn:()=>{}},{testo:"Aggiungi",cls:"pri",destra:true,fn:(d)=>{
         const c=leggiCandidati(d); if(!c) return false;
         v.elezioni.push({carica:$('[data-c="__c"]',d).value,quanti:num($('[data-c="__n"]',d).value)||1,
-          modo:$('[data-c="__m"]',d).value, giri:c.giri, esclusi:c.esclusi, eletti:[],rinunce:[]});
+          modo:$('[data-c="__m"]',d).value, giri:c.giri, esclusi:c.esclusi, eletti:[],rinunce:[], unoAllaVolta:true});
         c.esclusi.forEach(g=>scriviCrono(v, null, `${g.ids.length>1?"Esclusi":"Escluso"} dai candidati per ${$('[data-c="__c"]',d).value}: ${g.ids.map(nomeMembro).join(", ")}. Motivo: ${g.nota}`, g.ora));
         salva(); disegna(); }}]});
     $('[data-c="__c"]',mc).onchange = ev => filtraCandidati(mc, ev.target.value); filtraCandidati(mc, libere[0]);
@@ -4814,9 +4823,26 @@ function collegaElezioni(v){
 /* ---------- chi è in gara per una carica ----------
    Fuori dall'elenco: chi ha rinunciato, chi è stato escluso (per questa carica o per tutta la riunione)
    e chi è già stato eletto in un giro prima. */
-const postiRimasti = e => Math.max(0, (e.quanti||1) - (e.eletti||[]).length);
-const nomeElezione = e => e.carica==="Membro di comitato" ? "Membri di comitato" : e.carica;
-const gruppoUfficio = (v,e) => { if(e.carica!=="Membro di comitato") return [];
+/* le elezioni nuove (unoAllaVolta) si votano un posto alla volta, e per comitato e delegati
+   il numero dei posti comprende gli ex ufficio: si eleggono solo i posti che restano */
+const verbaleDiElezione = e => DB.verbali.find(v=>(v.elezioni||[]).includes(e) || (v.prove||[]).includes(e));
+const quantiUfficio = (v,e) => v ? new Set(gruppoUfficio(v,e).flatMap(g=>g.ids)).size : 0;
+const postiRimasti = (e, v=e.unoAllaVolta && verbaleDiElezione(e)) => Math.max(0, (e.quanti||1) - (e.eletti||[]).length - (e.unoAllaVolta ? quantiUfficio(v,e) : 0));
+const postiGiro = (e, g) => g.posti || (e.unoAllaVolta ? 1 : e.quanti) || 1;
+/* il titolo della votazione e, sotto il nome di ogni eletto, il suo incarico */
+const nomeElezione = e => e.carica==="Membro di comitato" ? "Comitato" : e.carica;
+const nomeEletto = e => ({"Membro di comitato":"Membro del comitato", "Delegati al Campo":"Delegato al Campo"})[e.carica] || e.carica;
+/* delegati al Campo ex ufficio: chi ha un incarico al Campo e il dirigente. Se il dirigente ha anche
+   un incarico conta una volta sola: resta un posto in più da eleggere, il suo sostituto */
+function delegatiUfficio(v){
+  const conInc = attivi().filter(m=>(m.incaricoCampo||"").trim());
+  const dir = (v.elezioni||[]).find(x=>!x.prova && x.carica==="Dirigente" && (x.eletti||[]).length)?.eletti || chiHaAl("Dirigente", v.data);
+  const soloDir = dir.filter(id=>!conInc.some(m=>m.id===id));
+  return [...(soloDir.length?[{ids:soloDir, nota:"ex ufficio, come Dirigente", carica:"Dirigente", ufficio:true}]:[]),
+    ...conInc.map(m=>({ids:[m.id], nota:`ex ufficio, con l'incarico al Campo «${m.incaricoCampo.trim()}»`, carica:m.incaricoCampo.trim(), ufficio:true}))];
+}
+const gruppoUfficio = (v,e) => { if(e.carica==="Delegati al Campo" && e.unoAllaVolta) return delegatiUfficio(v);
+  if(e.carica!=="Membro di comitato") return [];
   return (v.elezioni||[]).filter(x=>!x.prova && ["Dirigente","Segretario","Tesoriere"].includes(x.carica) && (x.eletti||[]).length)
     .map(x=>({ids:[...x.eletti], nota:"ex ufficio, come "+x.carica, carica:x.carica, ufficio:true})); };
 const gruppiEsclusi = (v,e) => [...(e.prova ? [] : (v.esclusi||[])), ...(e.esclusi||[]), ...gruppoUfficio(v,e)];
@@ -4904,31 +4930,44 @@ function dopoGiro(v, e, giro, magg, dopo, el, blocca){
   const sopra = L.filter(m=>voti(m.id)>=magg);
   let pre = sopra.slice(0,posti);
   if(sopra.length>posti){ const taglio = voti(sopra[posti].id); pre = pre.filter(m=>voti(m.id)>taglio); }
-  const preE = new Set(giro.eletti || (vecchia ? e.eletti : pre.map(m=>m.id)));
+  const preE = new Set(giro.spareggio ? [] : giro.eletti || (vecchia ? e.eletti : pre.map(m=>m.id)));
   const piu = voti(L[0].id)>1;
   const giaAltrove = Object.fromEntries((giro.altrove||[]).map(a=>[a.id, a.carica]));
-  const stato0 = m => giaAltrove[m.id] ? "a" : preE.has(m.id) ? "e" : (!giro.deciso && !vecchia && piu && voti(m.id)===1) ? "f" : "r";
+  /* fuori in automatico chi ha preso meno voti (tutti quelli a pari voti in fondo), se in gara ne restano abbastanza:
+     almeno uno in più dei posti ancora liberi. Il segretario può rimetterli in gara. */
+  const nonE = L.filter(m=>!preE.has(m.id) && !giaAltrove[m.id]), minimo = Math.min(...nonE.map(m=>voti(m.id)));
+  const bassi = nonE.filter(m=>voti(m.id)===minimo), liberi = e.unoAllaVolta||giro.spareggio ? (preE.size?0:1) : posti - preE.size;
+  const togli = new Set(liberi>0 && nonE.length-bassi.length >= liberi+1 ? bassi.map(m=>m.id) : []);
+  /* spareggio: il primo (senza maggioranza) va in finale, gli altri sono tutti pari e si votano fra loro.
+     Nello spareggio chi raggiunge la maggioranza va in finale: non è eletto. */
+  const conFinale = !vecchia && (giro.spareggio || e.unoAllaVolta || (e.quanti||1)===1);
+  const spar = conFinale && !giro.spareggio && liberi===1 && nonE.length>=3 && bassi.length===nonE.length-1 && voti(nonE[0].id)>minimo;
+  const preN = new Set(giro.deciso ? (giro.inFinale||[]) : giro.spareggio ? (sopra.length && (sopra.length===1 || voti(sopra[0].id)>voti(sopra[1].id)) ? [sopra[0].id] : []) : spar ? [nonE[0].id] : []);
+  const stato0 = m => giaAltrove[m.id] ? "a" : preE.has(m.id) ? "e" : preN.has(m.id) ? "n" : (!giro.deciso && !vecchia && !spar && (togli.has(m.id) || (piu && voti(m.id)===1))) ? "f" : "r";
   /* gli altri incarichi che si possono dare a questa persona: non ancora assegnati in questo verbale */
   const elenco = e.prova ? v.prove : v.elezioni, nomiCariche = e.prova ? INCARICHI_PROVA.map(c=>c[0]) : CARICHE;
   const altri = m => nomiCariche.filter(c=>c!==e.carica && (!sessoCarica(c) || sessoCarica(c)===m.sesso)
     && (giaAltrove[m.id]===c || !elenco.some(z=>z.carica===c && elezioneFinita(z))));
-  const seg = (m,st) => `<span class="dg-s">${[["e",m.sesso==="F"?"Eletta":"Eletto"],["r","Resta in gara"],["f","Fuori"],["a","Altro incarico"]].map(([val,t])=>
+  const seg = (m,st) => `<span class="dg-s">${[...(giro.spareggio?[]:[["e",m.sesso==="F"?"Eletta":"Eletto"]]),...(conFinale?[["n","In finale"]]:[]),["r","Resta in gara"],["f","Fuori"],...(giro.spareggio?[]:[["a","Altro incarico"]])].map(([val,t])=>
     `<label><input type="radio" name="dg-${m.id}" value="${val}" ${st===val?"checked":""}><span>${t}</span></label>`).join("")}</span>
     <select class="i" data-dga ${st==="a"?"":"hidden"}>${altri(m).map(c=>`<option ${giaAltrove[m.id]===c?"selected":""}>${esc(c)}</option>`).join("")}</select>`;
   const k = e.giri.indexOf(giro), deciso = giroDeciso(e,giro);
-  el.innerHTML = `<div class="pn"><div class="pn-h"><span class="lb">Dopo il giro ${k+1}: eletti e prossimo giro</span>
+  el.innerHTML = `<div class="pn"><div class="pn-h"><span class="lb">Dopo ${giro.spareggio?`lo spareggio (giro ${k+1}): chi va in finale`:`il giro ${k+1}: eletti e prossimo giro`}</span>
       ${deciso?`<button class="bt sm psh" data-dgapri>Cambia le scelte di questo giro</button>`:""}</div>
     <div class="pn-b" data-dgc ${deciso?"hidden":""}>
-     <div class="avv n">Per ogni nome scegli <b>Eletto</b>, <b>Resta in gara</b> per il prossimo giro, oppure <b>Fuori</b>. L'app propone eletto chi raggiunge la maggioranza di <b>${magg}</b>: decidi tu. Puoi segnare eletto anche chi è sotto la maggioranza, o più persone dei posti previsti, oppure dare a qualcuno un <b>altro incarico</b>: in quei casi scrivi il motivo. «Fuori» vale solo per il prossimo giro e non va nel verbale.</div>
+     <div class="avv n">Per ogni nome scegli <b>Eletto</b>, <b>Resta in gara</b> per il prossimo giro, oppure <b>Fuori</b>. L'app propone eletto chi raggiunge la maggioranza di <b>${magg}</b>: decidi tu. Puoi segnare eletto anche chi è sotto la maggioranza, o più persone dei posti previsti, oppure dare a qualcuno un <b>altro incarico</b>: in quei casi scrivi il motivo. «Fuori» vale solo per il prossimo giro e non va nel verbale: l'app mette fuori chi ha preso meno voti, e puoi rimetterlo in gara.</div>
      <div class="dg-l">${L.map(m=>{ const st=stato0(m); return `<div class="dg-r ${st}" data-dg="${m.id}">${avatar(m)}
        <div class="g"><b>${esc(nomeMembro(m))}</b>${voti(m.id)>=magg?`<small>raggiunge la maggioranza</small>`:""}</div>
        <span class="dg-v">${voti(m.id)}</span>${seg(m,st)}</div>`; }).join("")}</div>
      <div class="avv b" data-dgs style="margin-top:10px"></div>
      <div data-dgn hidden>${campo("Motivo della decisione (resta scritto nel verbale)","__mot","","area",'style="min-height:80px"')}</div>
      <div class="nv-err" hidden></div>
+     ${giro.spareggio?`<div class="avv b">È uno spareggio: chi raggiunge la maggioranza va in finale${(giro.finalisti||[]).length?` contro <b>${esc(giro.finalisti.map(nomeMembro).join(", "))}</b>`:""}. Se sono ancora pari, rifai lo spareggio fra i rimasti.</div>`
+       : spar?`<div class="avv b">Nessuno raggiunge la maggioranza e gli altri sono tutti pari: l'app propone <b>${esc(nomeMembro(nonE[0]))}</b> in finale e uno spareggio fra gli altri. Chi vince lo spareggio con la maggioranza va in finale contro di lui.</div>`:""}
      <div class="dg-az"><button class="bt" data-dgf="tutti" ${blocca?"disabled":""}>Giro con tutti</button>
+       ${conFinale?`<button class="bt" data-dgf="spareggio" ${blocca?"disabled":""}>Spareggio fra i rimasti</button>`:""}
        <button class="bt" data-dgf="rimasti" ${blocca?"disabled":""}>Giro con i rimasti</button>
-       <button class="bt pri" data-dgf="chiudi" ${blocca?"disabled":""}>Conferma e chiudi</button></div>
+       <button class="bt" data-dgf="chiudi" ${blocca?"disabled":""}>Conferma e chiudi</button></div>
     </div></div>`;
   $("[data-dgapri]",el)?.addEventListener("click", ev=>{ $("[data-dgc]",el).hidden = false; ev.target.hidden = true; });
   $$("[data-dgf]",el).forEach(b=>b.onclick=()=>fine(el, b.dataset.dgf));
@@ -4936,17 +4975,24 @@ function dopoGiro(v, e, giro, magg, dopo, el, blocca){
   const aggiorna = ev => {
     const toccata = ev?.target.closest?.("[data-dg]"); if(toccata) delete toccata.dataset.auto;
     /* posti tutti assegnati: gli altri non restano in gara, vanno fuori da soli (e tornano in gara se un posto si libera) */
-    const pieno = L.filter(m=>stati()[m.id]==="e").length >= posti;
+    const pieno = L.filter(m=>stati()[m.id]==="e").length >= posti || (giro.spareggio && L.some(m=>stati()[m.id]==="n"));   // spareggio vinto: gli altri escono
     $$("[data-dg]",el).forEach(r=>{ const c = $("input:checked",r).value;
       if(pieno && c==="r"){ $('input[value="f"]',r).checked = true; r.dataset.auto = "1"; }
       else if(!pieno && c==="f" && r.dataset.auto){ $('input[value="r"]',r).checked = true; delete r.dataset.auto; } });
     const st = stati(), eletti = L.filter(m=>st[m.id]==="e"), sotto = eletti.filter(m=>voti(m.id)<magg), resto = posti - eletti.length;
-    const altrove = L.filter(m=>st[m.id]==="a");
+    const altrove = L.filter(m=>st[m.id]==="a"), finN = L.filter(m=>st[m.id]==="n"), nR = L.filter(m=>st[m.id]==="r").length;
+    /* in blu il pulsante da toccare adesso, secondo le scelte fatte */
+    const consiglio = resto<=0 ? "chiudi"
+      : giro.spareggio ? (finN.length || nR<2 ? "rimasti" : "spareggio")
+      : finN.length ? (nR>=2 ? "spareggio" : "rimasti")
+      : eletti.length ? "tutti" : nR && nR<L.length ? "rimasti" : "tutti";
+    $$("[data-dgf]",el).forEach(b=>b.classList.toggle("pri", b.dataset.dgf===consiglio));
     $$("[data-dg]",el).forEach(r=>{ r.className = "dg-r "+st[r.dataset.dg]; $("[data-dga]",r).hidden = st[r.dataset.dg]!=="a"; });
     $("[data-dgs]",el).innerHTML = `Posti da assegnare: <b>${posti}</b> · eletti adesso: <b>${eletti.length}</b> · ${
-      resto>0 ? `${resto===1?"resta <b>1</b> posto":`restano <b>${resto}</b> posti`}: con un altro giro ognuno vota ${resto===1?"un nome":resto+" nomi"}; con «Conferma e chiudi» ${resto===1?"resta non assegnato":"restano non assegnati"} e serve il motivo`
+      resto>0 ? `${resto===1?"resta <b>1</b> posto":`restano <b>${resto}</b> posti`}: ${e.unoAllaVolta?"si elegge un posto alla volta, ogni scheda ha un nome":`con un altro giro ognuno vota ${resto===1?"un nome":resto+" nomi"}`}; con «Conferma e chiudi» ${resto===1?"resta non assegnato":"restano non assegnati"} e serve il motivo`
       : resto===0 ? "tutti i posti sono assegnati" : `<b>${-resto} in più dei posti previsti</b>: si può fare, i posti diventano ${posti-resto}. Scrivi il motivo qui sotto.`}${
       sotto.length?`<br>Senza maggioranza: <b>${esc(sotto.map(nomeMembro).join(", "))}</b>. Scrivi il motivo qui sotto.`:""}${
+      finN.length||(giro.finalisti||[]).length?`<br>In finale: <b>${esc([...(giro.finalisti||[]), ...finN.map(m=>m.id)].map(nomeMembro).join(", "))}</b>. «Spareggio fra i rimasti» fa votare solo chi resta in gara; «Giro con i rimasti» fa votare fra chi è in finale e chi resta in gara.`:""}${
       altrove.length?`<br>Altro incarico: ${altrove.map(m=>`<b>${esc(nomeMembro(m))}</b> → ${esc($(`[data-dg="${m.id}"] [data-dga]`,el).value||"nessun incarico libero")}`).join(", ")}. Scrivi il motivo qui sotto.`:""}`;
     $("[data-dgn]",el).hidden = !sotto.length && resto>=0 && !altrove.length;
   };
@@ -4962,6 +5008,10 @@ function dopoGiro(v, e, giro, magg, dopo, el, blocca){
     if(resto<0 && !nota) return err(`I posti erano ${posti} e hai segnato ${eletti.length} eletti: scrivi il motivo, resta nel verbale.`);
     if(sotto.length && !nota) return err("Qualcuno è eletto senza la maggioranza: scrivi il motivo, resta nel verbale.");
     if(modo!=="chiudi" && resto<=0) return err("I posti sono tutti assegnati: non serve un altro giro. Tocca «Conferma e chiudi».");
+    const finale = L.filter(m=>st[m.id]==="n").map(m=>m.id), giaFin = giro.finalisti||[];
+    if(finale.length && eletti.length) return err("In un giro o si elegge qualcuno o si manda qualcuno in finale: non tutte e due le cose.");
+    if(modo==="chiudi" && (finale.length || giaFin.length)) return err("C'è chi è in finale: tocca «Giro con i rimasti» per votare la finale.");
+    if(modo==="spareggio" && rimasti.length<2) return err("Per lo spareggio servono almeno due nomi su «Resta in gara».");
     if(modo==="chiudi" && resto>0 && !nota){ $("[data-dgn]",d).hidden = false;
       return err(`${resto===1?"Resta 1 posto non assegnato":`Restano ${resto} posti non assegnati`}: scrivi il motivo, resta nel verbale. Per assegnarlo fai un altro giro.`); }
     /* si è deciso di dare l'incarico a più persone del previsto (per esempio quattro a pari voti per un posto solo) */
@@ -4970,9 +5020,11 @@ function dopoGiro(v, e, giro, magg, dopo, el, blocca){
       e.postiAggiunti = [...(e.postiAggiunti||[]), {da:prima, a:e.quanti, nota, ora:oraOra()}];
       scriviCrono(v, e, `${e.carica}: gli eletti passano da ${prima} a ${e.quanti}. Motivo: ${nota}`);
     }
-    if(modo==="rimasti" && !rimasti.length) return err("Nessuno resta in gara: segna «Resta in gara» chi va al prossimo giro, oppure fai il giro con tutti.");
+    if(modo==="rimasti" && !rimasti.length && !finale.length && !giaFin.length) return err("Nessuno resta in gara: segna «Resta in gara» chi va al prossimo giro, oppure fai il giro con tutti.");
     annullaAltrove(v, e, giro);
     eleggi(v, e, giro, eletti, nota, magg);
+    giro.inFinale = finale;
+    if(finale.length) scriviCrono(v, e, `${nomeElezione(e)}: ${finale.map(nomeMembro).join(", ")} in finale`);
     assegnaAltrove(v, e, giro, altrove, nota);
     /* chiusa con meno eletti dei posti: i posti restano vuoti per decisione dell'assemblea, con il motivo */
     delete e.postiVuoti;
@@ -4981,7 +5033,8 @@ function dopoGiro(v, e, giro, magg, dopo, el, blocca){
       scriviCrono(v, e, `${e.carica}: ${resto===1?"1 posto resta non assegnato":`${resto} posti restano non assegnati`}. Motivo: ${nota}`);
     }
     e.chiusa = modo==="chiudi";
-    if(modo!=="chiudi") e.giri.push({voti:{},nulli:0,bianchi:0,astenuti:0,candidati:modo==="rimasti"?rimasti:[],posti:resto});
+    if(modo==="spareggio") e.giri.push({voti:{},nulli:0,bianchi:0,astenuti:0,candidati:rimasti,posti:1,spareggio:true,finalisti:[...giaFin, ...finale]});
+    else if(modo!=="chiudi") e.giri.push({voti:{},nulli:0,bianchi:0,astenuti:0,candidati:modo==="rimasti"?[...giaFin, ...finale, ...rimasti]:[],posti:e.unoAllaVolta?1:resto});
     dopo(modo!=="chiudi");
   }
 }
@@ -5007,7 +5060,7 @@ function spoglio(v,idx){
     const fuoriNome=nonAttribuite(modo,giro);
     const base=v.presentiUscita ?? v.presentiApertura ?? presenti.length ?? attivi().length;
     const magg=Math.floor(base/2)+1;
-    const posti=giro.posti || e.quanti || 1;
+    const posti=postiGiro(e,giro), uff=e.unoAllaVolta?quantiUfficio(v,e):0;
     const conVoti=elencoGiro.filter(m=>giro.voti[m.id]).sort(ord);
     const top=conVoti.slice(0,Math.max(3,posti+1));
     const sopra=conVoti.filter(m=>giro.voti[m.id]>=magg);
@@ -5028,7 +5081,8 @@ function spoglio(v,idx){
         <div>
           <div class="pn"><div class="pn-h"><input class="i" id="fq" placeholder="Scrivi le prime lettere per trovare un nome…"></div>
           <div class="pn-b" style="max-height:46vh">
-            ${soloQuesti?`<div class="avv b">${g>0&&soloQuesti.size>1?"Si vota fra":unico?"Candidato unico, si vota sì o no:":"Candidati proposti:"} ${dentro.concat(fuori).map(m=>esc(nomeMembro(m))).join(", ")}.</div>`:""}
+            ${giro.spareggio?`<div class="avv b">Spareggio fra ${dentro.concat(fuori).map(m=>esc(nomeMembro(m))).join(", ")}${(giro.finalisti||[]).length?`. Già in finale: <b>${esc(giro.finalisti.map(nomeMembro).join(", "))}</b>`:""}.</div>`
+            :soloQuesti?`<div class="avv b">${g>0&&soloQuesti.size>1?"Si vota fra":unico?"Candidato unico, si vota sì o no:":"Candidati proposti:"} ${dentro.concat(fuori).map(m=>esc(nomeMembro(m))).join(", ")}.</div>`:""}
             <span class="lb">Presenti — ${dentro.length}</span>
             <div class="vg" id="g1">${dentro.sort(ord).map(m=>pulsanteVoto(nomeMembro(m),giro.voti[m.id]||0,m.id,
               e.rinunce.includes(m.id)?"rin":"")).join("")}</div>
@@ -5044,7 +5098,7 @@ function spoglio(v,idx){
             <tr><td>${modo==="alzata"?"Mani alzate sui nomi":"Voti ai nomi"}</td><td>${espressi}</td></tr>${posti>1||giro.no?`<tr><td>${giro.no?"Contrari":"Schede"}</td><td>${giro.no?giro.no:schede}</td></tr>`:""}
             <tr><td>${modo==="alzata"?"Astenuti":"Bianchi + nulli"}</td><td>${fuoriNome}</td></tr>
             <tr class="tt"><td>Maggioranza (metà + 1)</td><td>${magg}</td></tr>
-            ${(e.quanti||1)>1?`<tr><td>Posti${e.eletti.length?` (già eletti ${e.eletti.length})`:""}</td><td>${e.quanti}</td></tr>
+            ${(e.quanti||1)>1?`<tr><td>Posti${uff?` (ex ufficio ${uff})`:""}${e.eletti.length?` (già eletti ${e.eletti.length})`:""}</td><td>${e.quanti}</td></tr>
               <tr><td>Nomi da votare in questo giro</td><td>${posti}</td></tr>`:""}
           </table></div></div>
           ${troppi?`<div class="avv r"><b>Il conto non torna.</b> Hai contato ${schede} ${modo==="alzata"?"voti":"schede"} su ${base} presenti: finché non lo sistemi non puoi dichiarare eletto nessuno.</div>`:""}
@@ -5073,7 +5127,7 @@ function spoglio(v,idx){
             <button class="bt sm psh" id="rin">Registra una rinuncia</button><button class="bt sm" id="escl">Escludi dei nomi</button></div>
           <div class="pn-b t0">${righeFuori.join("") || `<div class="vuoto">Nessuno ha rinunciato e nessuno è escluso. Una rinuncia o un'esclusione si possono sempre annullare da qui.</div>`}</div></div>
       </div>`;
-    const {el,chiudi}=modale({titolo:`${e.prova?"Prova — ":""}${nomeElezione(e)} — giro ${g+1} · ${modoNome(modo)}`,largo:true,corpo,
+    const {el,chiudi}=modale({titolo:`${e.prova?"Prova — ":""}${nomeElezione(e)} — giro ${g+1}${giro.spareggio?", spareggio":""} · ${modoNome(modo)}`,largo:true,corpo:(e.prova?"":bottoneSotto())+corpo,
       azioni:[{testo:"Elimina",cls:"dan",fn:()=>{ eliminaElezione(v, e, chiudi); return false; }},
         {testo:"Chiudi",destra:true,fn:()=>{ disegna(); }}]});
     const leggi=k=> k==="__bianchi"?giro.bianchi : k==="__nulli"?giro.nulli
@@ -5094,7 +5148,8 @@ function spoglio(v,idx){
     $("#fq",el).oninput=()=>{ const q=$("#fq",el).value;
       $$(".vt",el).forEach(b=>{ if(b.classList.contains("spec")) return;
         b.style.display=nomeInizia(b.textContent,q)?"":"none"; }); };
-    const nuovoGiro=candidati=>{ e.giri.push({voti:{},nulli:0,bianchi:0,astenuti:0,candidati,posti:postiRimasti(e)||1}); e.chiusa=false; salva(); rifai(); };
+    const nuovoGiro=candidati=>{ e.giri.push({voti:{},nulli:0,bianchi:0,astenuti:0,candidati,posti:e.unoAllaVolta?1:postiRimasti(e)||1}); e.chiusa=false; salva(); rifai(); };
+    el.addEventListener("click", ev=>{ if(ev.target.closest("[data-vsotto]")) votazioneSotto(v, {carica:e.carica}, chiudi); });
     $("#giroNuovo",el)?.addEventListener("click",()=>unicoNonEletto(v, e, unicoId, id=>nuovoGiro([id])));
     $("#giroTutti",el)?.addEventListener("click",()=>nuovoGiro([]));
     if($("#dgQui",el) && (modo!=="telefoni" || giro.telefoni)) dopoGiro(v, e, giro, magg, altro=>{
@@ -5124,19 +5179,25 @@ function bloccoElezioniStampa(v){
       <span class="ca">${esc(nomeElezione(e))}</span>
       <span class="el${eletti.length?"":" no"}">${esc(eletti.join(" · ")||"carica non assegnata")}</span>
       <span class="mo">${esc(modoNome(modoDi(e)))}${e.ora?" · ore "+esc(e.ora):""}${e.giri.length>1?` · ${e.giri.length} giri`:""}</span>
-      ${e.giri.map((g,i)=>{
+      ${(()=>{ let posto=1, k=0; const perPosto = e.unoAllaVolta && (e.quanti||1)>1;
+       return e.giri.map((g,i)=>{
+        k++; const pk=posto, gk=k; if(perPosto && (g.eletti||[]).length){ posto++; k=0; }
+        const vinto = new Set(g.eletti || (i===e.giri.length-1 ? e.eletti||[] : [])), gr = (id,t) => vinto.has(id) ? `<b>${t}</b>` : t;
         const voti=Object.entries(g.voti).sort((a,b)=>b[1]-a[1]);
         const tot=voti.reduce((a,z)=>a+z[1],0);
         const uno = voti.length===1 && !g.no && !g.bianchi && !g.nulli && !g.astenuti && tot===(v.presentiUscita ?? v.presentiApertura ?? (v.presenti||[]).length);
-        const righe=voti.map(([id,n])=>`<tr><td>${esc(nomeMembro(id))}</td><td>${uno?"unanime":n}</td></tr>`).join("");
+        const righe=voti.map(([id,n])=>`<tr><td>${gr(id,esc(nomeMembro(id)))}</td><td>${gr(id,uno?"unanime":n)}</td></tr>`).join("");
         if(!righe) return "";
-        const eti = e.giri.length===1 ? "Votazione"
+        const eti = perPosto ? `${pk}° posto, ${gk}° giro` : e.giri.length===1 ? "Votazione"
           : i===0 ? "1° giro" : (i===e.giri.length-1 ? "Votazione finale" : `${i+1}° giro`);
-        return `<span class="gt">${eti}</span><table>${righe}
+        return `<span class="gt">${eti}${g.spareggio?", spareggio":""}</span><table>${righe}
           ${g.bianchi?`<tr><td>Bianchi</td><td>${g.bianchi}</td></tr>`:""}
           ${g.nulli?`<tr><td>Nulli</td><td>${g.nulli}</td></tr>`:""}
-          ${g.astenuti?`<tr><td>Astenuti</td><td>${g.astenuti}</td></tr>`:""}${g.no?`<tr><td>Contrari</td><td>${g.no}</td></tr>`:""}</table>`;
-      }).join("")}
+          ${g.astenuti?`<tr><td>Astenuti</td><td>${g.astenuti}</td></tr>`:""}${g.no?`<tr><td>Contrari</td><td>${g.no}</td></tr>`:""}</table>${
+          (g.inFinale||[]).length?`<p class="rin">In finale: ${esc(g.inFinale.map(nomeMembro).join(", "))}.</p>`:""}`;
+      }).join(""); })()}
+      ${(v.votazioni||[]).filter(x=>x.padre?.carica===e.carica).map(x=>`<p class="rin">Durante l'elezione si è votato su «${esc(x.oggetto||"")}»: ${
+        esc(x.opzioni.map(o=>`${o.testo} ${o.voti}`).join(", "))}${x.bianchi?`, bianchi ${x.bianchi}`:""}${x.astenuti?`, astenuti ${x.astenuti}`:""}. ${x.esito?`Esito: ${esc(x.esito)}.`:"Esito non ancora confermato."}</p>`).join("")}
       ${(e.rinunce||[]).length?`<p class="rin">Rinunce: ${esc(e.rinunce.map(nomeMembro).join(", "))}.</p>`:""}
       ${(e.rinunceRitirate||[]).length?`<p class="rin">Rinunce poi ritirate: ${esc(e.rinunceRitirate.map(nomeMembro).join(", "))}.</p>`:""}
       ${(e.daAltra||[]).map(d=>`<p class="rin">${esc(nomeMembro(d.id))}: incarico dato dall'assemblea dopo la votazione per ${esc(d.carica)} (${d.voti} ${d.voti===1?"voto":"voti"}). Motivo: ${esc(d.nota)}</p>`).join("")}
@@ -5330,10 +5391,28 @@ function unicoNonEletto(v, e, ora, nuovoGiro){
       ...(gia?[]:[{testo:"Ripeti la votazione",cls:"pri",destra:true,fn:()=>nuovoGiro(ora)}])]});
 }
 /* «Nuova votazione»: favorevole o contrario, oppure più opzioni, una casella per ognuna */
-function nuovaVotazione(v, prova){
+/* durante una votazione nasce una questione da votare a parte: la votazione principale resta sospesa
+   e la nuova le resta legata (padre), anche nel verbale */
+function padreDi(v, x){
+  const p = x.padre; if(!p) return null;
+  if(p.carica){ const e = v.elezioni.find(z=>z.carica===p.carica); return e && {nome:`l'elezione per ${nomeElezione(e)}`, apri:()=>spoglio(v,e)}; }
+  const i = v.votazioni.findIndex(z=>z.id===p.id);
+  return i<0 ? null : {nome:`la votazione su «${v.votazioni[i].oggetto||"senza oggetto"}»`, apri:()=>votazione(v,i)};
+}
+const bottoneSotto = () => `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="bt sm" data-vsotto>Votazione su questo punto</button></div>`;
+function votazioneSotto(v, padre, chiudi){
+  const vai = () => { chiudi(); nuovaVotazione(v, false, padre); };
+  const c = typeof VOTO!=="undefined" && VOTO.ctx;
+  const tel = c && (padre.id ? c.x?.id===padre.id : c.e?.carica===padre.carica) && ["voto","spoglio"].includes(VOTO.fase);
+  if(tel) conferma("Si sta votando dai telefoni: il giro in corso si annulla e si rifà quando tornate a questa votazione. Vado avanti?",
+    ()=>votoAnnulla().then(vai, e=>avvisa("Non è andata", esc(e.message))));
+  else vai();
+}
+function nuovaVotazione(v, prova, padre){
+  const p = padre && padreDi(v, {padre});
   const riga = (t="") => `<div class="nv-r"><input class="i" data-nvo value="${esc(t)}" placeholder="Scrivi un'opzione"><button class="bt sm gh" data-nvx>Togli</button></div>`;
-  const {el} = modale({titolo:prova?"Prova: nuova proposta finta":"Nuova votazione", corpo:
-    `${campo("Oggetto","__o","")}${scelta("Come si vota","__m",prova&&MODI.some(m=>m[0]==="telefoni")?"telefoni":modoProposto("alzata"),MODI)}
+  const {el} = modale({titolo:prova?"Prova: nuova proposta finta":p?"Votazione su un punto":"Nuova votazione", corpo:
+    `${p?`<div class="avv b">Nasce durante ${esc(p.nome)}, che resta sospesa: ci torni quando questa è finita. Nel verbale si legge che è stata votata durante l'altra.</div>`:""}${campo("Oggetto","__o","")}${scelta("Come si vota","__m",prova&&MODI.some(m=>m[0]==="telefoni")?"telefoni":modoProposto("alzata"),MODI)}
      <span class="lb" style="margin-top:12px;display:block">Che cosa si vota</span>
      <div class="nv-tipo">
        <label class="on"><input type="radio" name="nvt" value="fc" checked><b>Favorevole o contrario</b><small>La proposta è approvata se i favorevoli raggiungono la maggioranza dei presenti.</small></label>
@@ -5343,15 +5422,15 @@ function nuovaVotazione(v, prova){
      <div class="avv n" style="margin-top:10px">Per alzata di mano si contano anche gli <b>astenuti</b>. A scrutinio segreto si contano anche le schede <b>bianche</b> e <b>nulle</b>.</div>
      ${prova?`<div class="avv n">È una prova: non diventa una decisione e nel verbale non compare.</div>`:""}
      <div class="nv-err" hidden></div>`,
-    azioni:[{testo:"Annulla",fn:()=>{}},{testo:"Crea",cls:"pri",destra:true,fn:(d)=>{
+    azioni:[{testo:"Annulla",fn:()=>{ p?.apri(); }},{testo:"Crea",cls:"pri",destra:true,fn:(d)=>{
       const err = t => nvErr(d,t);
       const fc = $('[name="nvt"]:checked',d).value==="fc";
       const opz = fc ? ["Favorevoli","Contrari"] : $$("[data-nvo]",d).map(i=>i.value.trim()).filter(Boolean);
       if(!$('[data-c="__o"]',d).value.trim()) return err("Scrivi l'oggetto della votazione.");
       if(opz.length<2) return err("Servono almeno due opzioni.");
       (prova?v.prove:v.votazioni).push({id:uid(),...(prova?{prova:true}:{}),oggetto:$('[data-c="__o"]',d).value.trim(),modo:$('[data-c="__m"]',d).value,
-        opzioni:opz.map(t=>({testo:t,voti:0})),bianchi:0,nulli:0,astenuti:0,giri:[],presenti:v.presenti.length,esito:""});
-      salva(); disegna(); }}]});
+        opzioni:opz.map(t=>({testo:t,voti:0})),bianchi:0,nulli:0,astenuti:0,giri:[],presenti:v.presenti.length,esito:"",...(p?{padre}:{})});
+      salva(); disegna(); if(p) votazione(v, v.votazioni.length-1); }}]});
   el.addEventListener("change", ev=>{
     if(ev.target.name!=="nvt") return;
     $$(".nv-tipo label",el).forEach(l=>l.classList.toggle("on", l.contains(ev.target)));
@@ -5404,7 +5483,7 @@ function nuovaProva(v, tipo){
       azioni:[{testo:"Annulla",fn:()=>{}},{testo:"Aggiungi",cls:"pri",destra:true,fn:d=>{
         const c=leggiCandidati(d); if(!c) return false;
         v.prove.push({id:uid(),prova:true,carica:$('[data-c="__c"]',d).value,quanti:Math.max(1,num($('[data-c="__n"]',d).value)||1),
-          modo:$('[data-c="__m"]',d).value,giri:c.giri,esclusi:c.esclusi,eletti:[],rinunce:[]}); salva(); disegna(); }}]});
+          modo:$('[data-c="__m"]',d).value,giri:c.giri,esclusi:c.esclusi,eletti:[],rinunce:[],unoAllaVolta:true}); salva(); disegna(); }}]});
     $('[data-c="__c"]',el).onchange = ev => { $('[data-c="__n"]',el).value = (INCARICHI_PROVA.find(c=>c[0]===ev.target.value)||[0,1])[1]; };
     return;
   }
@@ -5421,7 +5500,7 @@ function bloccoVotazioni(v){
                      :'<button class="bt sm psh" data-vadd>+ Votazione</button>'}</div>
     <div class="pn-b t0">${v.votazioni.length?v.votazioni.map((x,i)=>
       `<div class="rw cl" data-vo="${i}"><div class="g"><div class="t">${esc(x.oggetto||"senza oggetto")}</div>
-        <div class="s">${esc(modoNome(modoDi(x)))}${(x.giri||[]).length?` · ${(x.giri||[]).length+1}° giro`:""} · ${x.opzioni.map(o=>`${esc(o.testo)} ${o.voti}`).join(" · ")}</div></div>
+        <div class="s">${padreDi(v,x)?`durante ${esc(padreDi(v,x).nome)} · `:""}${esc(modoNome(modoDi(x)))}${(x.giri||[]).length?` · ${(x.giri||[]).length+1}° giro`:""} · ${x.opzioni.map(o=>`${esc(o.testo)} ${o.voti}`).join(" · ")}</div></div>
         <span class="cp ${x.esito===DA_PORTARE?"b":x.esito==="approvata"?"v":x.esito?"o":""}">${esc(x.esito||"in corso")}</span></div>`).join("")
       :'<div class="vuoto">Nessuna votazione. Servono per far mettere a verbale come si è votato, anche in comitato.</div>'}</div></div>`;
 }
@@ -5475,7 +5554,8 @@ function votazione(v,i,lista){
     const troppi = tot>base;
     const {el,chiudi}=modale({titolo:`${x.prova?"Prova — ":""}${x.oggetto||"Votazione"} · ${modoNome(modo)}${x.giri.length?` — ${x.giri.length+1}° giro`:""}`,
       largo:true,corpo:
-      `${x.giri.length?`<div class="pn"><div class="pn-h"><span class="lb">Giri precedenti</span></div>
+      `${x.prova?"":padreDi(v,x)?`<div class="avv b" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:220px">Votazione nata durante ${esc(padreDi(v,x).nome)}, che è sospesa.</span><button class="bt" data-vtorna>Torna alla votazione principale</button></div>`:bottoneSotto()}
+       ${x.giri.length?`<div class="pn"><div class="pn-h"><span class="lb">Giri precedenti</span></div>
         <div class="pn-b t0">${x.giri.map((g,k)=>`<div class="rw"><span class="cp">${k+1}° giro</span>
           <div class="g"><div class="s">${g.opzioni.map(o=>`${esc(o.testo)} ${o.voti}`).join(" · ")}${
             nonAttribuite(modo,g)?` · non attribuiti ${nonAttribuite(modo,g)}`:""}</div></div></div>`).join("")}</div></div>`:""}
@@ -5521,6 +5601,9 @@ function votazione(v,i,lista){
     collegaVoti(el,leggi,scrivi,()=>{ chiudi(); apri(); });
     if(modo==="telefoni") telBox(el,{v,x,rifai:()=>{ chiudi(); apri(); }});
     if(rest) $("#resto",el).onclick=()=>{ rest.opzione.voti=rest.resto; salva(); chiudi(); apri(); };
+    el.addEventListener("click", ev=>{   // anche nel riquadro dei telefoni, che si ridisegna
+      if(ev.target.closest("[data-vsotto]")) votazioneSotto(v, {id:x.id}, chiudi);
+      if(ev.target.closest("[data-vtorna]")){ chiudi(); disegna(); padreDi(v,x)?.apri(); } });
   }
   apri();
 }
@@ -7782,8 +7865,8 @@ VISTE.manuale=()=>{
 let impSez="documenti";
 /* si vede in Impostazioni: serve a capire al volo se sull'iPad e' arrivata la versione
    nuova o e' rimasta quella di prima in memoria. */
-const VERSIONE_APP="26.29";
-const AGGIORNATA_IL="13 novembre 2026";
+const VERSIONE_APP="26.30";
+const AGGIORNATA_IL="17 novembre 2026";
 const CREDITI="Realizzato da: Edoardo Birla";
 /* offline: il service worker tiene in cache l'app e i caratteri, cosi' sull'iPad
    si apre e funziona senza rete. Data e ora arrivano dall'orologio del dispositivo. */
@@ -7813,6 +7896,8 @@ VISTE.impostazioni=async ()=>{
             <input type="checkbox" data-c="numeroLettere" ${I.numeroLettere?"checked":""}> Numera le lettere a piè di pagina</label>
           <label style="display:flex;align-items:center;gap:10px;font-size:14.6px">
             <input type="checkbox" data-c="votazioniProva" ${I.votazioniProva?"checked":""}> Mostra nei verbali le «Votazioni di prova» (incarichi finti, per far provare il voto ai membri)</label>
+          <label style="display:flex;align-items:center;gap:10px;font-size:14.6px">
+            <input type="checkbox" data-c="schedaBianca" ${I.schedaBianca!==false?"checked":""}> Nel voto dai telefoni c'è la «Scheda bianca» (si può cambiare anche per ogni votazione)</label>
         </div></div>
     </div>
     <div style="${S("cariche")?"":"display:none"}">
@@ -8873,10 +8958,15 @@ function votoPannello(){
   h += att.map(([uid,t])=>{
     const noto = membro((DB.impostazioni.telefoniNoti||{})[uid]), gia = votoCollegati();
     const sug = noto ? [noto, ...votoSuggerimenti(`${t.nome} ${t.cognome}`).filter(m=>m.id!==noto.id)].slice(0,3) : votoSuggerimenti(`${t.nome} ${t.cognome}`);
+    // stesso nome scritto da un presente già collegato: è lui da un altro browser o dall'app «Vota»
+    const di = Object.values(VOTO.tel).find(o=>o!==t && o.membroId && ["pronto","uscito"].includes(o.stato) && votoPresente(o.membroId)
+      && votoNorm(o.nome+" "+o.cognome)===votoNorm(t.nome+" "+t.cognome));
     return `<div class="rw" style="display:block;background:var(--ocra-t)">
-      <div>Un telefono ha scritto <b>«${esc(t.nome+" "+t.cognome)}»</b>. È…</div>
+      ${di ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><div style="flex:1;min-width:200px"><b>È di nuovo ${esc(nomeMembro(di.membroId))}</b>, da un altro browser o dall'app «Vota»?</div>
+        <button class="bt pri" data-vcoll="${uid}" data-m="${di.membroId}" data-subito>Sì, ricollega</button></div>` : ""}
+      <div>Un telefono ha scritto <b>«${esc(t.nome+" "+t.cognome)}»</b>. ${di?"Altrimenti, è…":"È…"}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${sug.map((m,i)=>
-        `<button class="bt sm ${i===0?"pri":""}" data-vcoll="${uid}" data-m="${m.id}">${esc(nomeMembro(m))}${m===noto?" · come l'ultima volta":""}${votoPresente(m.id)?"":votoAmmesso(m.id)?" · assente":" · non è del comitato"}${gia.has(m.id)?" · al posto del suo altro telefono":""}</button>`).join("")
+        `<button class="bt sm ${i===0&&!di?"pri":""}" data-vcoll="${uid}" data-m="${m.id}">${esc(nomeMembro(m))}${m===noto?" · come l'ultima volta":""}${votoPresente(m.id)?"":votoAmmesso(m.id)?" · assente":" · non è del comitato"}${gia.has(m.id)?" · al posto del suo altro telefono":""}</button>`).join("")
         || `<span class="s">Nessun nome somiglia.</span>`}</div>
       <div style="display:flex;gap:6px;margin-top:6px"><select class="i" data-valtro="${uid}" style="flex:1"><option value="">Un altro membro…</option>
         ${attivi().map(m=>`<option value="${m.id}">${esc(nomeMembro(m))}${gia.has(m.id)?" (ha già un telefono)":""}</option>`).join("")}</select>
@@ -8890,7 +8980,7 @@ function votoPannello(){
   return h;
 }
 /* collegare un telefono a una scheda; chi non è segnato presente entra in sala o a distanza */
-function votoCollega(uid, id){
+function votoCollega(uid, id, subito){
   const v = VOTO.v, m = membro(id); if(!m) return;
   if(!votoAmmesso(id)){ avvisa("Non è del comitato", `<b>${esc(nomeMembro(m))}</b> non fa parte del comitato: a una riunione di comitato il suo telefono non entra. Se è stato invitato, segnalo prima fra i presenti.`); return; }
   // telefono scarico o cambiato: il nuovo prende il posto del vecchio, che non vota più
@@ -8919,7 +9009,8 @@ function votoCollega(uid, id){
     `<p class="sm-t">Collegando il telefono entra fra i presenti, con l'ora di adesso in cronologia. Come partecipa alla riunione?</p>`,
     azioni:[{testo:"Annulla",fn:()=>{}},{testo:"A distanza, in collegamento",fn:()=>entra(true)},{testo:"In sala",cls:"pri",destra:true,fn:()=>entra(false)}]});
   };
-  if(vecchi.length) return conferma(`<b>${esc(nomeMembro(m))}</b> è già collegato con un altro telefono${vecchi.some(u=>telVivo(VOTO.tel[u]))?", che risulta ancora aperto":""}.
+  // «Sì, ricollega» non chiede altro, a meno che il vecchio telefono sia ancora aperto: allora potrebbe essere un'altra persona
+  if(vecchi.length && !(subito && !vecchi.some(u=>telVivo(VOTO.tel[u])))) return conferma(`<b>${esc(nomeMembro(m))}</b> è già collegato con un altro telefono${vecchi.some(u=>telVivo(VOTO.tel[u]))?", che risulta ancora aperto":""}.
     Lo sposto su questo? Il telefono vecchio non potrà più votare.`, avanti);
   avanti();
 }
@@ -8956,13 +9047,14 @@ function votoRisultato(c){
   const g = c.giro, soli = candidatiGiro(c.v, c.e, g), et = etichetteVoto(attivi());
   const deciso = giroDeciso(c.e, g), dichiarati = g.eletti || (deciso ? c.e.eletti : null);   // quelli che il segretario ha dichiarato eletti
   /* elezione finita dopo più giri: in sala si vedono tutti gli eletti, anche quelli dei giri prima */
-  const tuttiEletti = vinti => deciso && vinti.length && elezioneFinita(c.e) && g===c.e.giri[c.e.giri.length-1] && c.e.eletti.length>vinti.length ? c.e.eletti.map(membro).filter(Boolean) : null;
+  const tuttiEletti = vinti => c.e.unoAllaVolta && (c.e.quanti||1)>1 ? (vinti.length ? [...new Set([...(c.e.eletti||[]).map(membro).filter(Boolean), ...vinti])] : null)
+    : deciso && vinti.length && elezioneFinita(c.e) && g===c.e.giri[c.e.giri.length-1] && c.e.eletti.length>vinti.length ? c.e.eletti.map(membro).filter(Boolean) : null;
   if(soli && soli.length===1){
     const m = membro(soli[0]), si = g.voti[m.id]||0, no = g.no||0, ok = dichiarati ? dichiarati.includes(m.id) : si>=soglia && si>no;
     return {righe:[{et:"Sì",v:si},{et:"No",v:no}], bianche:g.bianchi||0, nulli:g.nulli||0, schede:g.schede??si+no+(g.bianchi||0), soglia, proposto:m, deciso,
       vinti: ok?[m]:[], tutti: tuttiEletti(ok?[m]:[]), esito: ok?["si",`${nomeMembro(m)} è ${parolaEletto([m])}`]:["no",`${nomeMembro(m)} non è ${parolaEletto([m])}`]};
   }
-  const posti = g.posti || c.e.quanti || 1;
+  const posti = postiGiro(c.e, g);
   /* fuori gara: rinunce ed esclusi, e chi era già eletto prima di questo giro */
   const fuori = fuoriGara(c.v, c.e); (g.eletti||[]).forEach(id=>fuori.delete(id)); if(deciso && !g.eletti) c.e.eletti.forEach(id=>fuori.delete(id));
   const ids = [...new Set([...(soli||[]), ...Object.keys(g.voti)])], rin = new Set(c.e.rinunce||[]);
@@ -8972,6 +9064,10 @@ function votoRisultato(c){
   const sopra = righe.filter(r=>r.v>=soglia && !fuori.has(r.m.id));
   let auto = sopra.slice(0, posti);
   if(sopra.length>posti) auto = auto.filter(r=>r.v>sopra[posti].v);
+  /* spareggio: chi vince va in finale, non è eletto. Anche un giro normale può mandare qualcuno in finale */
+  const fin = (deciso ? (g.inFinale||[]) : g.spareggio && auto.length===1 ? [auto[0].m.id] : []).map(membro).filter(Boolean);
+  if(g.spareggio || fin.length) return {righe, bianche:g.bianchi||0, nulli:g.nulli||0, schede:g.schede??righe.reduce((a,r)=>a+r.v,0)+(g.bianchi||0), soglia, vinti:[], deciso,
+    esito: fin.length ? ["si", `In finale: ${fin.map(nomeMembro).join(", ")}`] : ["pari", deciso ? "Nessuno va in finale" : `Nessuno raggiunge la maggioranza di ${soglia}`]};
   const vinti = dichiarati ? righe.filter(r=>dichiarati.includes(r.m.id)).map(r=>r.m) : auto.map(r=>r.m);
   return {righe, bianche:g.bianchi||0, nulli:g.nulli||0, schede:g.schede??righe.reduce((a,r)=>a+r.v,0)+(g.bianchi||0), soglia, vinti, tutti:tuttiEletti(vinti), deciso,
     esito: vinti.length ? ["si", `${parolaEletto(vinti,true)}: ${vinti.map(nomeMembro).join(", ")}`]
@@ -8980,7 +9076,10 @@ function votoRisultato(c){
 function votoBox(c){
   const k = votoChiave(c), v = c.v, aperta = VOTO.ctx && VOTO.chiave===k;
   const stato = (cls,t) => `<span class="tb-stato ${cls}">${t}</span>`;
-  const testa = (t, s) => `<header class="tb-h"><div><div class="tb-k">Votazione dai telefoni</div><div class="tb-t">${t}</div></div>${s}</header>`;
+  /* col voto dai telefoni il resto della finestra è nascosto: questi due pulsanti stanno qui */
+  const sotto = c.x?.prova || c.e?.prova ? "" : c.x && padreDi(v, c.x) ? `<button class="bt sm" data-vtorna style="margin-left:auto">Torna alla votazione principale</button>`
+    : `<button class="bt sm" data-vsotto style="margin-left:auto">Votazione su questo punto</button>`;
+  const testa = (t, s) => `<header class="tb-h"><div><div class="tb-k">Votazione dai telefoni</div><div class="tb-t">${t}</div></div>${sotto}${s}</header>`;
   if(!votoPossibile()) return testa("Non disponibile", stato("","Senza collegamento")) +
     `<div class="tb-avv">${CLOUD.io && !puoScrivere() ? "Il voto dai telefoni lo apre solo chi ha la modifica." : "Per votare dai telefoni servono internet e l'accesso con la password."} Puoi sempre cambiare il modo di votare: per alzata di mano o con le schede di carta.</div>`;
   if(aperta && VOTO.fase==="voto"){
@@ -9030,16 +9129,18 @@ function votoBox(c){
       : soli.length===1 ? `<div class="tb-cand">${avatar(soli[0])}<div><b>${esc(nomeMembro(soli[0]))}</b><span>candidato unico: si vota sì o no</span></div></div>`
       : `<div class="tb-chips">${soli.map(m=>`<span>${esc(nomeMembro(m))}</span>`).join("")}</div>`;
   }
-  const nomi = c.e ? Math.min(c.giro.posti || postiRimasti(c.e) || 1, (candidatiGiro(c.v,c.e,c.giro)||attivi().filter(m=>!fuoriGara(c.v,c.e).has(m.id))).length) : 1;
+  const nomi = c.e ? Math.min(postiGiro(c.e, c.giro), (candidatiGiro(c.v,c.e,c.giro)||attivi().filter(m=>!fuoriGara(c.v,c.e).has(m.id))).length) : 1;
   const senza = votoSenzaTelefono();
   return testa(c.x?.prova||c.e?.prova?"Prova pronta per iniziare":"Pronta per iniziare", stato("","Da aprire")) +
     `<div class="tb-riga"><span class="tb-l">${c.x?"Opzioni":"Si vota fra"}</span>${chi}</div>
-     <div class="tb-riga"><span class="tb-l">Chi vota</span><span><b>${pronti}</b> telefoni pronti su <b>${pres}</b> presenti${nomi>1?` · ognuno deve scegliere <b>${nomi}</b> nomi, oppure la scheda bianca`:""}</span></div>
+     <div class="tb-riga"><span class="tb-l">Chi vota</span><span><b>${pronti}</b> telefoni pronti su <b>${pres}</b> presenti${nomi>1?` · ognuno deve scegliere <b>${nomi}</b> nomi${conBianca(c)?", oppure la scheda bianca":""}`:""}</span></div>
+     <div class="tb-riga"><span class="tb-l">Scheda bianca</span><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-vbianca ${conBianca(c)?"checked":""}> Sul telefono si può lasciare la scheda bianca</label></div>
      ${senza.length?`<div class="tb-avv"><b>Senza telefono collegato (${senza.length}):</b> ${esc(senza.map(nomeMembro).join(", "))}.<br>Non potranno votare: collegali prima di aprire, dal riquadro «Telefoni per votare».</div>`:""}
      ${interrotta?`<div class="tb-avv">Una votazione era rimasta aperta quando l'app è stata chiusa: la chiave per aprire le sue schede non esiste più, quindi si ripete da capo.</div>`:""}
      <div class="tb-az">${altra?`<span class="tb-nota">C'è già un'altra votazione aperta: chiudi prima quella.</span>`
        :`<button class="bt pri" data-vapri ${pronti?"":"disabled"}>Apri la votazione sui telefoni</button>
          <a class="bt" href="${esc(indirizzoVoto("proiezione.html"))}" target="_blank" rel="noopener">Schermo di proiezione</a>
+         ${c.e && gruppoUfficio(c.v, c.e).length ? `<button class="bt" data-vuff>Mostra gli ex ufficio</button>` : ""}
          <button class="bt gh dan" data-velimina style="margin-left:auto">Elimina questa votazione</button>`}</div>`;
 }
 const voTono = et => /^\s*(favorevol|s[iì]\s*$)/i.test(et) ? "fav" : RE_CONTRARI.test(et) ? "con" : "";
@@ -9050,7 +9151,12 @@ async function miniatura(m, lato=160){
   const k = m.foto + ":" + lato; if(VOTO.mini.has(k)) return VOTO.mini.get(k);
   try{ const t = await ricomprimi(d, lato, .72); VOTO.mini.set(k, t); return t; }catch(e){ return null; }
 }
+/* la scheda bianca sul telefono: di solito c'è; si toglie in Impostazioni o per una sola votazione */
+const conBianca = c => (c.x||c.e).bianca ?? (DB.impostazioni.schedaBianca!==false);
 async function votoDomanda(c){
+  return {...await votoDomanda0(c), bianca:conBianca(c)};
+}
+async function votoDomanda0(c){
   if(c.x){
     const SING = {favorevoli:"Favorevole", contrari:"Contrario"};
     return {titolo:c.x.oggetto||"Votazione", max:1, min:1, prova:!!c.x.prova, ballo:c.x.giri.length>0, proposto:null,
@@ -9068,8 +9174,9 @@ async function votoDomanda(c){
   const opz = [];
   for(const m of lista) opz.push({id:m.id, et:et(m), n:`${m.nome||""} ${m.cognome||""} ${m.conosciuto||""}`, membro:true, foto:await miniatura(m)});
   /* tanti nomi quanti sono i posti ancora da assegnare: tutti devono sceglierne proprio quel numero, oppure la scheda bianca */
-  const max = Math.max(1, Math.min(c.giro.posti || postiRimasti(c.e) || 1, lista.length));
-  return {titolo:nomeElezione(c.e), max, min:max, prova, ballo:!!soli && c.e.giri.indexOf(c.giro)>0, proposto:null, opz};
+  const max = Math.max(1, Math.min(postiGiro(c.e, c.giro), lista.length));
+  const finale = c.giro.spareggio ? {finale:(c.giro.finalisti||[]).map(membro).filter(Boolean).map(nomeBreve).join(", ")} : {};
+  return {titolo:nomeElezione(c.e), max, min:max, prova, ballo:!!soli && c.e.giri.indexOf(c.giro)>0, proposto:null, opz, ...finale};
 }
 async function votoApri(c){
   if(!votoPossibile()) return;
@@ -9162,11 +9269,29 @@ async function votoPerSchermo(c, d){
   /* chi ha avuto un altro incarico da questa votazione (per esempio il 2° diacono) si vede insieme agli eletti */
   if(c.e) for(const a of (r.tutti ? c.e.giri : [c.giro]).flatMap(g=>g.altrove||[])){ const m = membro(a.id); if(m) vinti.push(await carta(m, a.carica)); }
   /* nel comitato ci sono anche dirigente, segretario e tesoriere, ex ufficio: si vedono accanto agli eletti */
-  if(c.e && vinti.length) for(const g of gruppoUfficio(c.v, c.e)) for(const id of g.ids){ const m = membro(id); if(m) vinti.push(await carta(m, g.carica+", ex ufficio")); }
-  return {titolo:d.titolo, ballo:!!d.ballo, prova:!!d.prova, elez:!c.x, carica:c.e?.carica||"", max:d.max, fc:!!r.fc, soglia:r.soglia,
-    bianche:r.bianche, schede:r.schede, esito:r.esito, vinta:r.opzVinta||null, vinti, righe:r.righe.map(x=>({et:x.et, v:x.v})),
+  /* gli ex ufficio si vedono a parte, sotto gli eletti */
+  const uff = c.e && vinti.length ? await carteUfficio(c.v, c.e) : [];
+  return {titolo:d.titolo, ballo:!!d.ballo, prova:!!d.prova, elez:!c.x, carica:c.e?nomeEletto(c.e):"", max:d.max, fc:!!r.fc, soglia:r.soglia,
+    bianche:r.bianche, schede:r.schede, esito:r.esito, vinta:r.opzVinta||null, vinti, uff, righe:r.righe.map(x=>({et:x.et, v:x.v})),
     proposto: r.proposto ? {nome:nomeBreve(r.proposto), foto:await miniatura(r.proposto,320), f:r.proposto.sesso==="F"} : null,
     chi: c.x ? "x:"+c.x.id : `${c.e.id||c.e.carica}:${c.e.giri.indexOf(c.giro)}`};
+}
+async function carteUfficio(v, e){
+  const L = [];
+  for(const g of gruppoUfficio(v, e)) for(const id of g.ids){ const m = membro(id); if(m) L.push({nome:nomeBreve(m), et:nomeBreve(m), foto:await miniatura(m,320), f:m.sesso==="F", carica:g.carica}); }
+  return L;
+}
+/* prima di cominciare a votare comitato o delegati, sullo schermo e sui telefoni si vedono gli ex ufficio */
+async function votoMostraUfficio(c){
+  const vinti = await carteUfficio(c.v, c.e);
+  await FB.updateDoc(D("sessioni", VOTO.s), {stato:"risultato", domanda:null, chiave:null, risultato:{titolo:nomeElezione(c.e), k:"Ex ufficio", elez:true, ballo:false, prova:!!c.e.prova,
+    carica:nomeEletto(c.e), max:1, fc:false, soglia:0, bianche:0, schede:0, esito:["si","Ex ufficio"], vinta:null, vinti:[], uff:vinti, righe:[], proposto:null, chi:"uff:"+(c.e.id||c.e.carica)}});
+}
+/* votazione su un punto nato durante un'altra: il giro aperto si annulla (la chiave si perde) e si rifà dopo */
+async function votoAnnulla(){
+  VOTO.ascoltoUrna?.(); clearTimeout(VOTO.timerUrna);
+  Object.assign(VOTO, {ascoltoUrna:null, priv:null, ctx:null, chiave:null, fase:null, urna:[], troppe:false, attesaLunga:false});
+  await FB.updateDoc(D("sessioni", VOTO.s), {stato:"attesa", domanda:null, chiave:null, risultato:null});
 }
 /* il segretario ha dichiarato gli eletti (anche diversi da quelli proposti dall'app): se quel risultato
    è ancora sullo schermo e sui telefoni, lo si aggiorna */
@@ -9187,12 +9312,12 @@ async function votoPubblicaProposta(v, x){
 
 /* ---- azioni ---- */
 document.addEventListener("click", ev=>{
-  const b = ev.target.closest("[data-vcoll],[data-vrif],[data-vscoll],[data-vapri],[data-vfine],[data-vripeti],[data-vconta-ora],[data-veleggi],[data-vgiro],[data-vrin],[data-velimina],[data-vlink],[data-vproietta],[data-vforza]");
+  const b = ev.target.closest("[data-vcoll],[data-vrif],[data-vscoll],[data-vapri],[data-vfine],[data-vripeti],[data-vconta-ora],[data-veleggi],[data-vgiro],[data-vrin],[data-velimina],[data-vlink],[data-vproietta],[data-vforza],[data-vuff]");
   if(!b) return;
   if(b.dataset.vlink!==undefined){ votoMandaLink(); return; }
   if(b.dataset.vproietta!==undefined){ votoProietta(b.dataset.vproietta==="1"); return; }
   const d = b.dataset, ctx = VOTO.box?.ctx, T = uid => D("sessioni", VOTO.s, "telefoni", uid);
-  if(d.vcoll) votoCollega(d.vcoll, d.m);
+  if(d.vcoll) votoCollega(d.vcoll, d.m, "subito" in d);
   else if(d.vrif) FB.updateDoc(T(d.vrif), {stato:"rifiutato", motivo:FB.deleteField()}).catch(()=>{});
   else if(d.vscoll) FB.updateDoc(T(d.vscoll), {stato:"attesa", prima:VOTO.tel[d.vscoll]?.membroId||null, membroId:FB.deleteField(), membroNome:FB.deleteField()}).catch(()=>{});
   else if("vapri" in d){ b.disabled = true; votoApri(ctx).catch(e=>{ avvisa("Non è andata", esc(e.message)); votoDisegnaBox(); }); }
@@ -9200,6 +9325,7 @@ document.addEventListener("click", ev=>{
   else if("vripeti" in d){ VOTO.ascoltoUrna?.(); VOTO.fase = null; VOTO.ctx = null; VOTO.priv = null; votoApri(ctx); }
   else if("vcontaOra" in d) conferma("Conto adesso le schede arrivate? Quelle che mancano contano come <b>schede bianche</b>.", votoConta);
   else if("vforza" in d) votoForza();
+  else if("vuff" in d){ b.disabled = true; votoMostraUfficio(ctx).catch(e=>avvisa("Non è andata", esc(e.message))).finally(()=>b.disabled = false); }
   else if("veleggi" in d) VOTO.box.el.closest(".mod").querySelector("#elg")?.click();
   else if("vgiro" in d) VOTO.box.el.closest(".mod").querySelector("#giroNuovo")?.click();
   else if("vrin" in d) registraRinuncia(ctx.v, ctx.e, ()=>ctx.rifai());
@@ -9213,6 +9339,8 @@ document.addEventListener("click", ev=>{
 document.addEventListener("change", ev=>{
   const uid = ev.target.dataset?.valtro;
   if(uid && ev.target.value) votoCollega(uid, ev.target.value);
+  const c = VOTO.box?.ctx;
+  if(ev.target.matches?.("[data-vbianca]") && c){ (c.x||c.e).bianca = ev.target.checked; salva(); votoDisegnaBox(); }
 });
 /* ==== VOTO FINE ==== */
 

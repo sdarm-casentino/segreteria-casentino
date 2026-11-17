@@ -1,7 +1,17 @@
 {
-  "versione": "26.29",
+  "versione": "26.30",
   "data": "novembre 2026",
   "novita": [
+    "Comitato e Delegati al Campo: si elegge un posto alla volta e dopo ogni eletto si rifà il giro con tutti, tranne chi è già eletto. Il numero dei posti comprende gli ex ufficio.",
+    "Delegati al Campo ex ufficio: il dirigente e chi ha un incarico al Campo (nuovo campo «Incarico al Campo» nella scheda del membro). Se il dirigente ha anche un incarico, resta un posto in più: il suo sostituto. Il pulsante «Mostra gli ex ufficio» li proietta prima di votare.",
+    "Spareggio: in «Dopo il giro» c'è «In finale» e il pulsante «Spareggio fra i rimasti». Anche nello spareggio serve la maggioranza dei presenti.",
+    "«Dopo il giro»: il pulsante da toccare è in blu, secondo le scelte fatte. Chi ha meno voti va fuori da solo quando restano abbastanza nomi.",
+    "«Votazione su questo punto»: durante una votazione o un'elezione se ne apre un'altra, e poi «Torna alla votazione principale». Nel verbale sta dentro il riquadro dell'incarico.",
+    "Verbale: i giri sono contati per posto («2° posto, 1° giro») e chi è eletto ha nome e voti in grassetto nel giro in cui viene eletto.",
+    "Proiezione e telefono: i nomi lunghi vanno a capo e si leggono interi; eletti ed ex ufficio sono in due gruppi separati, sotto il nome solo l'incarico. Titoli «Comitato» e «Delegati al Campo», per ogni eletto «Membro del comitato» e «Delegato al Campo».",
+    "Presenze: nei primi 5 minuti dopo «Inizia» le spunte non segnano entrate e uscite.",
+    "Scheda bianca: si può togliere per tutte le votazioni (Impostazioni → Documenti) o per una sola.",
+    "Voto dai telefoni: una scheda mandata due volte dallo stesso telefono non conta più due volte. Se uno entra da un altro browser con lo stesso nome, il riquadro chiede «È di nuovo …?» e lo ricolleghi con un tocco.",
     "Elezioni: se un incarico ha più posti e si chiude con meno eletti (per esempio uno solo su due), l'app avvisa che il posto resta non assegnato e chiede il motivo, che va nel verbale e nella cronologia. Per assegnarlo resta sempre possibile un altro giro.",
     "Impostazioni: le cariche della chiesa hanno una scheda a parte e l'intestazione dei documenti ha tutto lo spazio della sua. Nel campo «Come lo conoscono» non c'è più l'esempio.",
     "La ricerca dei nomi trova chi ha il nome o il cognome che comincia con le lettere scritte (sui telefoni vale anche il nome con cui uno è conosciuto). Votando i membri di comitato, dirigente, segretario e tesoriere appena eletti non sono più fra i nomi: ci sono già ex ufficio, e in sala compaiono accanto agli eletti. Corretto: con le votazioni di prova accese un verbale nuovo non si apriva.",

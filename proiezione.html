@@ -42,7 +42,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden}
 .sp-prog i{display:block;height:100%;background:var(--o);border-radius:1cqw;transition:width .6s cubic-bezier(.2,.8,.2,1)}
 .sp-ris{margin-top:2.6cqw;display:grid;grid-auto-flow:column;grid-template-columns:repeat(var(--col),minmax(0,1fr));gap:calc(var(--fs)*.75) 4cqw}
 .sp-r{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:1.5cqw;row-gap:calc(var(--fs)*.25);align-items:baseline}
-.sp-r-l{font-size:var(--fs);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-r-l{font-size:var(--fs);font-weight:600;line-height:1.15;overflow-wrap:break-word;text-wrap:balance}   /* il nome va a capo fra le parole, mai tagliato */
 .sp-r-n{font-family:var(--serif);font-size:calc(var(--fs)*1.35);font-weight:600;line-height:1}
 .sp-r.ok .sp-r-n,.sp-r.ok .sp-r-l{color:var(--v)} .sp-r.con.ok .sp-r-n,.sp-r.con.ok .sp-r-l{color:var(--r)}
 .sp-r-b{grid-column:1/-1;position:relative;height:calc(var(--fs)*.42);border-radius:99px;background:rgba(255,255,255,.08)}
@@ -258,12 +258,12 @@ function disegnaSchermo(){
   if((sess.stato==="voto" || sess.stato==="spoglio") && d){
     const c = sess.conteggio || {fatto:0, totale:0}, pct = c.totale ? c.fatto/c.totale*100 : 0;
     const pill = d.prova ? `<span class="sp-pill oro"><i></i>${sess.stato==="spoglio"?"Prova · si contano i voti":"Votazione di prova"}</span>`
-      : sess.stato==="spoglio" ? `<span class="sp-pill"><i></i>Si contano i voti</span>` : d.ballo ? `<span class="sp-pill oro"><i></i>Ballottaggio</span>` : `<span class="sp-pill"><i></i>Votazione in corso</span>`;
+      : sess.stato==="spoglio" ? `<span class="sp-pill"><i></i>Si contano i voti</span>` : d.finale!=null ? `<span class="sp-pill oro"><i></i>Spareggio</span>` : d.ballo ? `<span class="sp-pill oro"><i></i>Ballottaggio</span>` : `<span class="sp-pill"><i></i>Votazione in corso</span>`;
     const conta = `<div class="sp-conta"><div class="sp-num">${c.fatto}<span> / ${c.totale}</span></div><div class="sp-num-t">hanno votato</div></div><div class="sp-prog"><i style="width:${pct}%"></i></div>`;
     // candidato unico: la sua scheda grande a sinistra; al primo giro le opzioni non si vedono, nei ballottaggi sì
     if(d.proposto) el.innerHTML = `${testa(pill)}<div class="sp-unico"><div class="sp-big">${foto(d.proposto,"ft g")}<b>${esc(d.proposto.nome)}</b><span>candidato a ${esc(d.titolo.toLowerCase())}</span></div>
         <div class="sp-unico-d"><div class="sp-tit">${esc(d.titolo)}</div><div class="sp-sot">Si vota sì o no, dal telefono. Il voto è segreto.</div>${conta}</div></div>`;
-    else el.innerHTML = `${testa(pill)}<div class="sp-tit">${esc(d.titolo)}</div>
+    else el.innerHTML = `${testa(pill)}<div class="sp-tit">${esc(d.titolo)}</div>${d.finale?`<div class="sp-sot">Già in finale: ${esc(d.finale)}</div>`:""}
       ${d.ballo?`<div class="sp-chips">${d.opz.map(o=>`<span class="sp-chip ${o.membro?"":"senza"}">${o.membro?foto(o,"ft c"):""}${esc(o.et)}</span>`).join("")}</div>`:`<div class="sp-sot">Vota dal tuo telefono. Il voto è segreto.</div>`}${conta}`;
     return;
   }
@@ -271,10 +271,13 @@ function disegnaSchermo(){
     const pill = `<span class="sp-pill ${r.prova?"oro":""}">${r.prova?"Prova · ":""}${r.ballo?"Risultati del ballottaggio":"Risultati"}</span>`;
     const max = Math.max(1, ...r.righe.map(x=>x.v), r.soglia||0);
     const vinti = vincenti(r);
-    if(r.elez && r.vinti.length){
-      const tutti = conBianche(r, r.proposto||r.ballo ? r.righe : r.righe.filter(x=>x.v));
-      el.innerHTML = `${testa(pill)}<div class="sp-tit piccolo">${esc(r.titolo)}</div>${barre(tutti, max, r.soglia, vinti, 11)}
-        <div class="sp-eletto"><div class="sp-k">${parolaEletti(r.vinti)}</div><div class="sp-cards ${r.vinti.length>2?"tanti":""}">${r.vinti.map(m=>scheda(m, m.carica||r.carica)).join("")}</div></div>`;
+    const uff = r.uff || [];
+    if(r.elez && (r.vinti.length || uff.length)){
+      const tutti = conBianche(r, r.proposto||r.ballo ? r.righe : r.righe.filter(x=>x.v)), tanti = r.vinti.length+uff.length>2 ? "tanti" : "";
+      /* eletti e ex ufficio in due gruppi; sotto il nome solo l'incarico */
+      const gruppo = (k, L) => L.length ? `<div class="sp-k">${esc(k)}</div><div class="sp-cards ${tanti}">${L.map(m=>scheda(m, m.carica||r.carica)).join("")}</div>` : "";
+      el.innerHTML = `${testa(r.k?"":pill)}<div class="sp-tit piccolo">${esc(r.titolo)}</div>${r.righe.length?barre(tutti, max, r.soglia, vinti, 11):""}
+        <div class="sp-eletto">${gruppo(parolaEletti(r.vinti), r.vinti)}${gruppo("Ex ufficio", uff)}</div>`;
       return;
     }
     const righe = conBianche(r, r.elez && !r.ballo ? r.righe.filter(x=>x.v) : r.righe);

@@ -266,7 +266,9 @@ async function vota(sc){
   votando = true;
   try{
     const busta = await cifra(sc, sess.chiave);
-    localStorage.setItem(chiavePendente(g), JSON.stringify({giro:g, ...busta}));
+    // ponytail: un numero a caso scelto qui, una volta sola: due pagine aperte o una ricarica mandano la stessa scheda, e la seconda viene rifiutata
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(15)), b=>b.toString(16).padStart(2,"0")).join("");
+    localStorage.setItem(chiavePendente(g), JSON.stringify({id, giro:g, ...busta}));
     await FB.setDoc(FB.doc(fs, "sessioni", CODICE, "votati", io.uid), {giro:g});
     scelta = []; conf = 0; votato = {giro:g};
   }catch(e){ localStorage.removeItem(chiavePendente(g)); alert("Il voto non è partito: controlla la connessione e riprova."); }
@@ -284,9 +286,14 @@ async function mandaScheda(){
   invio = true;
   try{
     await preparaUrna();
-    await FB.setDoc(FB.doc(FB.collection(URNA.fs, "sessioni", CODICE, "urna")), p);
+    const {id, ...scheda} = p;
+    // le schede rimaste da prima (senza numero) prendono un numero a caso, come prima
+    await FB.setDoc(id ? FB.doc(URNA.fs, "sessioni", CODICE, "urna", id) : FB.doc(FB.collection(URNA.fs, "sessioni", CODICE, "urna")), scheda);
     localStorage.removeItem(chiavePendente(p.giro));
-  }catch(e){ console.warn(e); }
+  }catch(e){
+    // rifiutata: c'è già (partita da un'altra pagina) o la votazione è chiusa. Non va rimandata.
+    if(e?.code==="permission-denied") localStorage.removeItem(chiavePendente(p.giro)); else console.warn(e);
+  }
   invio = false; disegna();
 }
 
@@ -359,13 +366,13 @@ function disegna(){
       }
     } else {
       const conFoto = d.opz.some(o=>o.membro), bi = scelta[0]==="__b";
-      h = `<div><div class="st-q">${d.prova?"<b>PROVA</b>":""}${d.ballo?"Ballottaggio":"Votazione"}</div><div class="st-tit">${esc(d.titolo)}</div>
+      h = `<div><div class="st-q">${d.prova?"<b>PROVA</b>":""}${d.finale!=null?"Spareggio":d.ballo?"Ballottaggio":"Votazione"}</div><div class="st-tit">${esc(d.titolo)}</div>${d.finale?`<div class="st-q">Già in finale: ${esc(d.finale)}</div>`:""}
           ${d.proposto?`<div class="st-prop">${foto(d.proposto,"ft p")}<div><small>Candidato proposto</small><b>${esc(d.proposto.nome)}</b></div></div>`
             :`<span class="st-quanti">${d.max===1?"Scegline uno":(d.min||1)>=d.max?`Scegline ${d.max}`:`Scegline fino a ${d.max}`}</span>`}</div>
         ${d.opz.length>6?`<label class="st-cerca">${IC.cerca}<input class="st-in" id="cerca" placeholder="Cerca un nome" value="${esc(cerca)}" aria-label="Cerca un nome"></label>`:""}
         ${d.opz.map(o=>`<div class="st-o ${scelta.includes(o.id)?"on":""} ${tono(o.et)}" data-o="${esc(o.id)}" data-n="${esc(o.n||o.et)}" ${nomeInizia(o.n||o.et,cerca)?"":"hidden"}>
           ${o.membro?foto(o,"ft o"):""}<span class="n">${esc(o.et)}</span><i>${scelta.includes(o.id)?IC.ok:""}</i></div>`).join("")}
-        <div class="st-o bia ${bi?"on":""}" data-o="__b">${conFoto?`<div class="ft o"></div>`:""}<span class="n">Scheda bianca</span><i>${bi?IC.ok:""}</i></div>`;
+        ${d.bianca===false?"":`<div class="st-o bia ${bi?"on":""}" data-o="__b">${conFoto?`<div class="ft o"></div>`:""}<span class="n">Scheda bianca</span><i>${bi?IC.ok:""}</i></div>`}`;
       p = `<div class="st-p">${avviso?`<div class="st-avv">${esc(avviso)}</div>`:d.max>1&&!bi?`<div class="st-scelti">${scelta.length} di ${d.max} scelti</div>`:""}<button class="st-bt xl" id="ok" ${scelta.length?"":"disabled"}>Conferma il voto</button></div>`;
     }
   }
@@ -380,11 +387,12 @@ function risultato(r){
   const max = Math.max(1, r.soglia||0, ...r.righe.map(x=>x.v));
   const righe = conBianche(r, r.elez && !r.ballo && !r.proposto ? r.righe.filter(x=>x.v) : r.righe);
   const prop = !r.elez ? esitoProposta(r) : null, primi = vincenti(r);
-  return `<div><div class="st-q">${r.prova?"<b>PROVA</b>":""}Risultato${r.ballo?" del ballottaggio":""}</div><div class="st-tit">${esc(r.titolo)}</div></div>
-    ${r.elez && (r.vinti.length || r.proposto) ? `<div class="st-el ${r.vinti.length?"":"no"}"><small>${r.vinti.length?parolaEletti(r.vinti):"Non "+parolaEletti([r.proposto]).toLowerCase()}</small>
+  return `<div><div class="st-q">${r.prova?"<b>PROVA</b>":""}${r.k?"":`Risultato${r.ballo?" del ballottaggio":""}`}</div><div class="st-tit">${esc(r.titolo)}</div></div>
+    ${r.elez && (r.vinti.length || r.proposto) ? `<div class="st-el ${r.vinti.length?"":"no"}"><small>${r.vinti.length?esc(parolaEletti(r.vinti)):"Non "+parolaEletti([r.proposto]).toLowerCase()}</small>
         ${(r.vinti.length?r.vinti:[r.proposto]).map(m=>`<div class="st-el-c">${foto(m,"ft e")}<div><b>${esc(m.nome)}</b><span>${esc(m.carica||r.carica||"")}</span></div></div>`).join("")}</div>`
       : prop ? `<div class="st-el prop ${prop.cls}"><small>${esc(prop.k)}</small><div class="st-el-c"><div class="st-el-ic">${IC[prop.ic]}</div><div><b>${esc(prop.titolo)}</b></div></div></div>`
-      : `<div class="st-el no"><small>${esc(r.esito[1])}</small></div>`}
+      : (r.uff||[]).length ? "" : `<div class="st-el no"><small>${esc(r.esito[1])}</small></div>`}
+    ${(r.uff||[]).length ? `<div class="st-el"><small>Ex ufficio</small>${r.uff.map(m=>`<div class="st-el-c">${foto(m,"ft e")}<div><b>${esc(m.nome)}</b><span>${esc(m.carica||"")}</span></div></div>`).join("")}</div>` : ""}
     <div class="st-rr">${righe.map(x=>`<div class="${x.bianca?"bianca":""} ${tono(x.et)} ${!x.bianca&&primi.includes(x.et)?"ok":""}"><span>${esc(x.et)}</span><em>${x.v}</em><i><b style="width:${x.v/max*100}%"></b>${r.soglia?`<u style="left:min(${r.soglia/max*100}%, calc(100% - 2px))"></u>`:""}</i></div>`).join("")}</div>
     ${r.soglia?`<div class="st-magg">La linea tratteggiata è la maggioranza: ${r.soglia} voti.</div>`:""}`;
 }
@@ -410,7 +418,7 @@ document.addEventListener("click", e=>{
     avviso = ""; disegna(); return; }
   if(e.target.closest("#ok")){
     const d = sess.domanda, manca = (d.min||1) - scelta.length;
-    if(scelta[0]!=="__b" && manca>0){ avviso = `Devi sceglierne ${d.min}: ${manca===1?"te ne manca 1":"te ne mancano "+manca}. Se non vuoi votare, scegli «Scheda bianca».`; disegna(); return; }
+    if(scelta[0]!=="__b" && manca>0){ avviso = `Devi sceglierne ${d.min}: ${manca===1?"te ne manca 1":"te ne mancano "+manca}.${d.bianca===false?"":" Se non vuoi votare, scegli «Scheda bianca»."}`; disegna(); return; }
     avviso = ""; conf = 1; scrollTo(0,0); disegna(); }
   else if(e.target.closest("#avanti")){ conf = 2; disegna(); }
   else if(e.target.closest("#cambia")){ conf = 0; disegna(); }
